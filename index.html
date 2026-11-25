@@ -29,7 +29,8 @@
   --violet: #a855f7;
   --font: "Outfit", "Avenir Next", system-ui, -apple-system, sans-serif;
 }
-html, body { height: 100%; }
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; }
+html { position: fixed; inset: 0; }
 body {
   background: var(--sky-top);
   color: var(--ink);
@@ -609,6 +610,12 @@ header > * { pointer-events: auto; }
     readSafe(); resize(); syncSound(); showMenu();
     requestAnimationFrame(frame);
   }
+  // Keep iOS Safari from scrolling, bouncing, pull-to-refresh or zooming the page while you draw.
+  const stop = (e) => { if (e.cancelable) e.preventDefault(); };
+  document.addEventListener("touchmove", stop, { passive: false });
+  canvas.addEventListener("touchstart", stop, { passive: false });
+  ["gesturestart", "gesturechange", "gestureend"].forEach((t) => document.addEventListener(t, stop, { passive: false }));
+  document.addEventListener("dblclick", stop, { passive: false });
   window.addEventListener("resize", () => { readSafe(); resize(); });
   window.claude?.hot?.snapshot?.(() => ({ round: S.round }));
   window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
