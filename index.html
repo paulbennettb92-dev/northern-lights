@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-title" content="Northern Lights">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-512.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>body{margin:0}</style>
+<title>Northern Lights</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#070b18">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap">
+<style>
+/* Layout: one full-screen night sky; header on top, play field in the middle, status + aurora tracker at the bottom. Single dark look by choice. */
+:root {
+  color-scheme: dark;
+  --sky-top: #070b18;
+  --sky-low: #0c1328;
+  --ink: #8ea2c4;
+  --ink-soft: #5b6b8c;
+  --chip: #18213a;
+  --glacier: #22d3ee;
+  --emerald: #34d399;
+  --violet: #a855f7;
+  --font: "Outfit", "Avenir Next", system-ui, -apple-system, sans-serif;
+}
+html, body { height: 100%; }
+body {
+  background: var(--sky-top);
+  color: var(--ink);
+  font-family: var(--font);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#app { position: fixed; inset: 0; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+
+header {
+  position: absolute; inset: 0 0 auto;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 14px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: 48px 1fr 72px; align-items: center;
+  pointer-events: none; z-index: 2;
+}
+header > * { pointer-events: auto; }
+.icon-btn {
+  width: 42px; height: 42px; border-radius: 50%; border: 0;
+  background: var(--chip); color: var(--ink);
+  display: grid; place-items: center; cursor: pointer;
+}
+.icon-btn:focus-visible, .play:focus-visible, .ghost:focus-visible { outline: 2px solid var(--glacier); outline-offset: 3px; }
+.title { text-align: center; font-size: 1.15rem; font-weight: 400; letter-spacing: .04em; color: var(--ink); }
+.round { text-align: right; font-size: 1.05rem; font-weight: 300; color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.hud {
+  position: absolute; inset: auto 0 0;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+  pointer-events: none; z-index: 2;
+}
+.status { min-height: 1.4em; font-size: 1.02rem; letter-spacing: .12em; text-align: center; transition: color .4s, opacity .4s; }
+.status small { display: block; margin-top: 4px; font-size: .78rem; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-soft); }
+.tracker { display: flex; gap: 22px; align-items: center; height: 40px; }
+.pip { width: 12px; height: 12px; border-radius: 50%; transition: all .35s ease; position: relative; }
+.pip.done { background: var(--c); box-shadow: 0 0 12px var(--c); }
+.pip.next { background: transparent; border: 1.5px solid var(--c); opacity: .55; }
+.pip.now { width: 18px; height: 18px; border: 2px solid var(--c); background: transparent; box-shadow: 0 0 0 10px color-mix(in srgb, var(--c) 16%, transparent); }
+
+.overlay {
+  position: absolute; inset: 0; z-index: 5;
+  display: grid; place-items: center; text-align: center;
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
+  background: radial-gradient(120% 80% at 50% 35%, rgba(12,19,40,.55), rgba(7,11,24,.92));
+  transition: opacity .5s ease;
+}
+.overlay.hide { opacity: 0; pointer-events: none; }
+.card { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 26rem; }
+.card h1 {
+  margin: 0; font-weight: 300; font-size: clamp(2.4rem, 11vw, 3.4rem); letter-spacing: .03em; line-height: 1.05;
+  background: linear-gradient(100deg, var(--glacier), var(--emerald) 50%, var(--violet));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-wrap: balance;
+}
+.card p { margin: 0; font-size: 1.02rem; line-height: 1.55; color: var(--ink); font-weight: 300; max-width: 22rem; }
+.rules { display: grid; gap: 10px; margin: 8px 0 6px; text-align: left; font-size: .95rem; font-weight: 300; }
+.rules div { display: flex; gap: 12px; align-items: center; }
+.rules i { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--c); box-shadow: 0 0 10px var(--c); }
+.play {
+  margin-top: 8px; border: 0; cursor: pointer;
+  font: 500 1.05rem var(--font); letter-spacing: .14em; text-transform: uppercase;
+  color: #06121a; padding: 16px 44px; border-radius: 999px;
+  background: linear-gradient(100deg, var(--glacier), var(--emerald));
+  box-shadow: 0 0 32px rgba(52,211,153,.35);
+}
+.ghost {
+  border: 0; background: none; cursor: pointer; color: var(--ink-soft);
+  font: 400 .9rem var(--font); letter-spacing: .12em; text-transform: uppercase; padding: 8px 12px;
+}
+.best { font-size: .8rem; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .overlay, .pip, .status { transition: none; } }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <canvas id="sky"></canvas>
+
+  <header>
+    <button class="icon-btn" id="back" aria-label="Back to menu">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="title">Northern Lights</div>
+    <div class="round" id="round">Round 1</div>
+  </header>
+
+  <div class="hud">
+    <div class="status" id="status"></div>
+    <div class="tracker" id="tracker" aria-hidden="true"></div>
+  </div>
+
+  <div class="overlay" id="menu">
+    <div class="card">
+      <h1>Northern Lights</h1>
+      <p>Draw each aurora across the sky. Start on the glowing light and trace through every light of that colour without lifting your finger.</p>
+      <div class="rules">
+        <div><i style="--c:var(--glacier)"></i>Glacier, Emerald and Violet auroras</div>
+        <div><i style="--c:var(--emerald)"></i>Lines, arcs, zigzags, triangles, stars</div>
+        <div><i style="--c:var(--violet)"></i>Stray off the path and the light fades</div>
+      </div>
+      <button class="play" id="play">Play</button>
+      <button class="ghost" id="sound" aria-pressed="true">Sound on</button>
+      <div class="best" id="best"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- Palette & shapes ----------
+  const AURORAS = [
+    { key: "glacier", name: "Glacier", rgb: [34, 211, 238] },
+    { key: "emerald", name: "Emerald", rgb: [52, 211, 153] },
+    { key: "violet",  name: "Violet",  rgb: [168, 85, 247] },
+  ];
+  // Shapes live in a unit box; closed shapes end on their first light.
+  const SHAPES = [
+    // tier 0
+    { name: "Ribbon",    tier: 0, pts: [[0, .7], [1, .3]] },
+    { name: "Arc",       tier: 0, pts: [[0, .9], [.5, .1], [1, .9]] },
+    { name: "Swoop",     tier: 0, pts: [[0, .2], [.5, .85], [1, .5]] },
+    // tier 1
+    { name: "Valley",    tier: 1, pts: [[0, 0], [.5, 1], [1, 0]] },
+    { name: "Zigzag",    tier: 1, pts: [[0, .15], [.33, .85], [.66, .15], [1, .85]] },
+    { name: "Hook",      tier: 1, pts: [[0, .2], [1, .2], [1, .9], [.45, .9]] },
+    { name: "Step",      tier: 1, pts: [[0, .9], [.4, .9], [.6, .1], [1, .1]] },
+    // tier 2
+    { name: "Triangle",  tier: 2, pts: [[.5, 0], [1, 1], [0, 1], [.5, 0]], closed: true },
+    { name: "Lightning", tier: 2, pts: [[.65, 0], [.2, .55], [.8, .45], [.35, 1]] },
+    { name: "Crown",     tier: 2, pts: [[0, 1], [.25, 0], [.5, .65], [.75, 0], [1, 1]] },
+    { name: "Diamond",   tier: 2, pts: [[.5, 0], [1, .5], [.5, 1], [0, .5], [.5, 0]], closed: true },
+    // tier 3
+    { name: "Square",    tier: 3, pts: [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]], closed: true },
+    { name: "Bowtie",    tier: 3, pts: [[0, 0], [1, 1], [1, 0], [0, 1], [0, 0]], closed: true },
+    { name: "Wave",      tier: 3, pts: [[0, .5], [.2, .05], [.4, .5], [.6, .95], [.8, .5], [1, .05]] },
+    { name: "House",     tier: 3, pts: [[0, 1], [0, .4], [.5, 0], [1, .4], [1, 1], [0, 1]], closed: true },
+    // tier 4
+    { name: "Star",      tier: 4, pts: starPts(), closed: true },
+    { name: "Spiral",    tier: 4, pts: [[.5, .5], [.7, .5], [.7, .25], [.25, .25], [.25, .75], [.95, .75], [.95, .02]] },
+    { name: "Hourglass", tier: 4, pts: [[0, 0], [1, 0], [.5, .5], [1, 1], [0, 1], [.5, .5], [0, 0]], closed: true },
+  ];
+  function starPts() {
+    const out = [];
+    for (let i = 0; i <= 5; i++) {
+      const a = -Math.PI / 2 + (i * 4 * Math.PI) / 5;
+      out.push([.5 + .5 * Math.cos(a), .52 + .5 * Math.sin(a)]);
+    }
+    return out;
+  }
+
+  // ---------- DOM ----------
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("sky"), ctx = canvas.getContext("2d");
+  const roundEl = $("round"), statusEl = $("status"), trackerEl = $("tracker");
+  const menu = $("menu"), playBtn = $("play"), backBtn = $("back"), soundBtn = $("sound"), bestEl = $("best");
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+
+  let W = 0, H = 0, DPR = 1;
+  let stars = [];
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------- Game state ----------
+  const S = {
+    round: 1, best: store.get("nl-best", 0), sound: store.get("nl-sound", true),
+    playing: false, auroras: [], active: 0, drag: null, fading: [], sparks: [],
+    phase: "play", phaseT: 0, fieldAlpha: 1,
+  };
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 3);
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    if (!stars.length || stars.w !== W) {
+      stars = Array.from({ length: Math.round((W * H) / 5200) }, () => ({
+        x: Math.random(), y: Math.random(), r: Math.random() * 1.1 + .3, p: Math.random() * 6.28, s: .4 + Math.random() * 1.2,
+      }));
+      stars.w = W;
+    }
+  }
+
+  // play field in CSS px (between header and HUD)
+  function field() {
+    const top = 96 + safe("top"), bottom = H - 150 - safe("bottom");
+    return { x: 28, y: top, w: W - 56, h: Math.max(120, bottom - top) };
+  }
+  function safe(side) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue("--sa-" + side);
+    return parseFloat(v) || 0;
+  }
+
+  // ---------- Round building ----------
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+
+  function buildRound() {
+    const r = S.round;
+    const count = [1, 2, 3][(r - 1) % 3];
+    const tier = Math.min(4, Math.floor((r - 1) / 3));
+    const colours = shuffle(AURORAS.slice()).slice(0, count);
+    const bands = shuffle([...Array(count).keys()]);
+    const used = new Set();
+    S.auroras = colours.map((c, i) => {
+      // mostly the current tier, sometimes an easier one
+      const pool = SHAPES.filter((s) => s.tier === tier || (s.tier < tier && Math.random() < .3));
+      let shape = pick(pool.filter((s) => !used.has(s.name)).length ? pool.filter((s) => !used.has(s.name)) : pool);
+      used.add(shape.name);
+      return { colour: c, shape, band: bands[i], bands: count, lights: placeShape(shape, bands[i], count, tier), lit: 0, trail: [], done: false };
+    });
+    S.active = 0; S.drag = null; S.phase = "play"; S.fieldAlpha = 0;
+    roundEl.textContent = "Round " + r;
+    renderTracker(); updateStatus();
+  }
+
+  // lights stored as fractions of the field, so they survive resizes
+  function placeShape(shape, band, bands, tier) {
+    const xs = shape.pts.map((p) => p[0]), ys = shape.pts.map((p) => p[1]);
+    const spanY = Math.max(...ys) - Math.min(...ys);
+    const flipX = Math.random() < .5, flipY = shape.closed ? false : Math.random() < .35;
+    const rot = tier >= 2 ? rand(-.2, .2) : rand(-.08, .08);
+    const bandH = 1 / bands;
+    // aspect: tall shapes need a squarer box
+    const f = field(), fieldAspect = f.w / f.h;
+    const tall = spanY > .6;
+    let bw = .92, bh = Math.min(bandH * .74, tall ? (bw * fieldAspect) * (bands === 1 ? .9 : 1) : bandH * .5);
+    if (tall && bands === 1) { bh = Math.min(.62, bw * fieldAspect); bw = Math.min(.92, bh / fieldAspect); }
+    if (tall && bands > 1) { bh = bandH * .76; bw = Math.min(.92, (bh / fieldAspect) * 1.05); }
+    if (!tall && bands === 1) bh = .34;
+    const cy = bandH * band + bandH / 2 + (bands === 1 ? rand(-.15, .15) : 0);
+    const cx = .5 + (bw < .8 ? rand(-(.92 - bw) / 2, (.92 - bw) / 2) : 0);
+    return shape.pts.map(([x, y]) => {
+      let ux = (flipX ? 1 - x : x) - .5, uy = (flipY ? 1 - y : y) - .5;
+      // rotate in pixel space to keep angles honest
+      let px = ux * bw * f.w, py = uy * bh * f.h;
+      const rx = px * Math.cos(rot) - py * Math.sin(rot), ry = px * Math.sin(rot) + py * Math.cos(rot);
+      return { x: cx + rx / f.w, y: cy + ry / f.h };
+    });
+  }
+
+  const toPx = (p) => { const f = field(); return { x: f.x + p.x * f.w, y: f.y + p.y * f.h }; };
+  const toFrac = (x, y) => { const f = field(); return { x: (x - f.x) / f.w, y: (y - f.y) / f.h }; };
+
+  // ---------- HUD ----------
+  function renderTracker() {
+    trackerEl.innerHTML = "";
+    S.auroras.forEach((a, i) => {
+      const d = document.createElement("div");
+      d.className = "pip " + (a.done ? "done" : i === S.active && S.phase === "play" ? "now" : "next");
+      d.style.setProperty("--c", rgb(a.colour.rgb));
+      trackerEl.appendChild(d);
+    });
+  }
+  function updateStatus(msg, colour) {
+    if (msg) { statusEl.innerHTML = msg; statusEl.style.color = colour || "var(--ink)"; return; }
+    const a = S.auroras[S.active];
+    if (!a) return;
+    const n = a.shape.closed ? a.lights.length - 1 : a.lights.length;
+    statusEl.innerHTML = `Connect the ${a.colour.name} aurora<small>${a.shape.name} · ${n} lights</small>`;
+    statusEl.style.color = rgb(a.colour.rgb);
+  }
+  const rgb = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+  // ---------- Sound ----------
+  let audio = null;
+  const SCALE = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.51];
+  function chime(step, vol = .12, dur = 1.2) {
+    if (!S.sound || !audio) return;
+    const t = audio.currentTime, f = SCALE[Math.min(step, SCALE.length - 1)];
+    [1, 2.01].forEach((m, k) => {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = "sine"; o.frequency.value = f * m;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(vol / (k + 1), t + .02);
+      g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur + .05);
+    });
+  }
+  function fizzleSound() {
+    if (!S.sound || !audio) return;
+    const t = audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
+    o.type = "triangle"; o.frequency.setValueAtTime(330, t); o.frequency.exponentialRampToValueAtTime(140, t + .35);
+    g.gain.setValueAtTime(.07, t); g.gain.exponentialRampToValueAtTime(.0001, t + .4);
+    o.connect(g).connect(audio.destination); o.start(t); o.stop(t + .45);
+  }
+  const buzz = (ms) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+
+  // ---------- Input ----------
+  const HIT = () => Math.max(30, Math.min(W, H) * .075);
+  const TOL = () => Math.max(42, Math.min(W, H) * (.13 - Math.min(4, Math.floor((S.round - 1) / 3)) * .012));
+
+  function segDist(p, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2));
+    return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+  }
+  function localPoint(e) { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+
+  canvas.addEventListener("pointerdown", (e) => {
+    if (!S.playing || S.phase !== "play" || S.drag) return;
+    const a = S.auroras[S.active]; if (!a) return;
+    const p = localPoint(e), start = toPx(a.lights[0]);
+    if (Math.hypot(p.x - start.x, p.y - start.y) > HIT() * 1.4) {
+      // nudge: pulse the start light
+      a.nudge = performance.now();
+      return;
+    }
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+    S.drag = { id: e.pointerId };
+    a.lit = 1; a.trail = [toFrac(start.x, start.y), toFrac(p.x, p.y)];
+    spark(start, a.colour.rgb, 10); chime(0); buzz(8);
+  });
+
+  canvas.addEventListener("pointermove", (e) => {
+    if (!S.drag || e.pointerId !== S.drag.id) return;
+    const a = S.auroras[S.active];
+    const co = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+    const events = co && co.length ? co : [e];
+    for (const ev of events) {
+      const p = localPoint(ev);
+      const last = toPx(a.trail[a.trail.length - 1]);
+      if (Math.hypot(p.x - last.x, p.y - last.y) < 2.5) continue;
+      a.trail.push(toFrac(p.x, p.y));
+      const prev = toPx(a.lights[a.lit - 1]), next = toPx(a.lights[a.lit]);
+      if (Math.hypot(p.x - next.x, p.y - next.y) < HIT()) {
+        a.trail.push(toFrac(next.x, next.y));
+        a.lit++;
+        spark(next, a.colour.rgb, 14); chime(a.lit - 1); buzz(10);
+        if (a.lit >= a.lights.length) { completeAurora(a); return; }
+      } else if (segDist(p, prev, next) > TOL()) {
+        fizzle(a, "Off course. Start again.");
+        return;
+      }
+    }
+  });
+
+  const release = (e) => {
+    if (!S.drag || e.pointerId !== S.drag.id) return;
+    const a = S.auroras[S.active];
+    if (a && !a.done) fizzle(a, "Lifted too soon. Start again.");
+    S.drag = null;
+  };
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
+
+  function fizzle(a, msg) {
+    S.fading.push({ trail: a.trail, rgb: a.colour.rgb, t: performance.now() });
+    a.trail = []; a.lit = 0; S.drag = null;
+    fizzleSound(); buzz(30);
+    updateStatus(`${msg}<small>${a.colour.name} aurora · ${a.shape.name}</small>`, "var(--ink)");
+    clearTimeout(fizzle.t); fizzle.t = setTimeout(() => { if (S.auroras[S.active] === a && !a.done) updateStatus(); }, 1800);
+  }
+
+  function completeAurora(a) {
+    a.done = true; a.doneAt = performance.now(); S.drag = null;
+    const mid = toPx(a.lights[Math.floor(a.lights.length / 2)]);
+    spark(mid, a.colour.rgb, 26);
+    S.active++;
+    if (S.active >= S.auroras.length) {
+      S.phase = "won"; S.phaseT = performance.now();
+      if (S.round > S.best) { S.best = S.round; store.set("nl-best", S.best); }
+      store.set("nl-round", S.round + 1);
+      setTimeout(() => chime(5, .1, 1.8), 120); setTimeout(() => chime(7, .08, 2.2), 300);
+      updateStatus(`Round ${S.round} complete<small>The sky is clear</small>`, "var(--ink)");
+      renderTracker();
+      setTimeout(() => { S.phase = "fade"; S.phaseT = performance.now(); }, 1700);
+      setTimeout(() => { S.round++; buildRound(); }, 2300);
+    } else {
+      renderTracker(); updateStatus();
+    }
+  }
+
+  function spark(p, c, n) {
+    if (reduceMotion) n = Math.ceil(n / 3);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 6.28, v = rand(.4, 2.6);
+      S.sparks.push({ x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, c, r: rand(1, 2.4) });
+    }
+  }
+
+  // ---------- Drawing ----------
+  function drawSky(t) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#070b18"); g.addColorStop(.62, "#0a1024"); g.addColorStop(1, "#0d1530");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // slow ambient curtains
+    if (!reduceMotion) {
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.lineCap = "round";
+      AURORAS.forEach((c, i) => {
+        const y = H * (.2 + i * .14) + Math.sin(t / 7000 + i * 2) * 30;
+        ctx.strokeStyle = rgb(c.rgb, .022); ctx.lineWidth = 120;
+        ctx.beginPath(); ctx.moveTo(-60, y + 40);
+        ctx.bezierCurveTo(W * .3, y - 60 + Math.sin(t / 5000 + i) * 40, W * .7, y + 80, W + 60, y - 20);
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+    for (const s of stars) {
+      const tw = reduceMotion ? .6 : .35 + .35 * Math.sin(t / 1000 * s.s + s.p);
+      ctx.fillStyle = `rgba(170,190,230,${tw})`;
+      ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, 6.283); ctx.fill();
+    }
+  }
+
+  function strokeTrail(pts, c, alpha) {
+    if (pts.length < 2) return;
+    const P = pts.map(toPx);
+    const path = new Path2D();
+    path.moveTo(P[0].x, P[0].y);
+    for (let i = 1; i < P.length - 1; i++) {
+      const mx = (P[i].x + P[i + 1].x) / 2, my = (P[i].y + P[i + 1].y) / 2;
+      path.quadraticCurveTo(P[i].x, P[i].y, mx, my);
+    }
+    path.lineTo(P[P.length - 1].x, P[P.length - 1].y);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    const layers = [[58, .05], [40, .08], [26, .14], [15, .3], [7, .85]];
+    for (const [w, a] of layers) { ctx.strokeStyle = rgb(c, a * alpha); ctx.lineWidth = w; ctx.stroke(path); }
+    const core = c.map((v) => Math.round(v + (255 - v) * .45));
+    ctx.strokeStyle = rgb(core, .9 * alpha); ctx.lineWidth = 2.6; ctx.stroke(path);
+  }
+
+  function drawLight(p, c, kind, t, a) {
+    const P = toPx(p);
+    if (kind === "dim") {
+      ctx.fillStyle = rgb(c, .38);
+      ctx.beginPath(); ctx.arc(P.x, P.y, 6, 0, 6.283); ctx.fill();
+      return;
+    }
+    if (kind === "lit") {
+      ctx.fillStyle = rgb(c, .18); ctx.beginPath(); ctx.arc(P.x, P.y, 18, 0, 6.283); ctx.fill();
+      ctx.fillStyle = rgb(c, 1); ctx.beginPath(); ctx.arc(P.x, P.y, 7, 0, 6.283); ctx.fill();
+      return;
+    }
+    // "target" (next to reach) or "wait" (later in this aurora)
+    const pulse = kind === "target" && !reduceMotion ? (Math.sin(t / 260) + 1) / 2 : 0;
+    const nudge = a && a.nudge && kind === "target" ? Math.max(0, 1 - (t - a.nudge) / 600) : 0;
+    const halo = (kind === "target" ? 30 : 22) + pulse * 6 + nudge * 14;
+    ctx.fillStyle = rgb(c, kind === "target" ? .2 + pulse * .08 : .12);
+    ctx.beginPath(); ctx.arc(P.x, P.y, halo, 0, 6.283); ctx.fill();
+    if (kind === "target") {
+      ctx.strokeStyle = rgb(c, .25 + pulse * .25); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(P.x, P.y, halo + 6 + pulse * 4, 0, 6.283); ctx.stroke();
+    }
+    ctx.fillStyle = rgb(c, kind === "target" ? 1 : .75);
+    ctx.beginPath(); ctx.arc(P.x, P.y, kind === "target" ? 10 : 8, 0, 6.283); ctx.fill();
+  }
+
+  function drawGuide(a, t) {
+    // a faint dotted hint between the last lit light and the next, early rounds only
+    if (S.round > 4 || !a || a.done) return;
+    const from = toPx(a.lights[Math.max(0, a.lit - 1)]), to = toPx(a.lights[Math.max(1, a.lit)]);
+    if (a.lit === 0 && !S.drag) {
+      // before starting, show the whole route
+      ctx.setLineDash([2, 12]); ctx.lineCap = "round"; ctx.lineWidth = 2.5;
+      ctx.strokeStyle = rgb(a.colour.rgb, .22);
+      ctx.beginPath();
+      a.lights.forEach((l, i) => { const P = toPx(l); i ? ctx.lineTo(P.x, P.y) : ctx.moveTo(P.x, P.y); });
+      ctx.lineDashOffset = -t / 60; ctx.stroke(); ctx.setLineDash([]);
+      return;
+    }
+    if (a.lit >= a.lights.length) return;
+    ctx.setLineDash([2, 12]); ctx.lineCap = "round"; ctx.lineWidth = 2.5;
+    ctx.strokeStyle = rgb(a.colour.rgb, .3); ctx.lineDashOffset = -t / 60;
+    ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  function frame(t) {
+    ctx.clearRect(0, 0, W, H);
+    drawSky(t);
+
+    if (S.playing) {
+      // field fade in / out between rounds
+      if (S.phase === "fade") S.fieldAlpha = Math.max(0, 1 - (t - S.phaseT) / 500);
+      else S.fieldAlpha = Math.min(1, S.fieldAlpha + .05);
+
+      ctx.save(); ctx.globalAlpha = S.fieldAlpha; ctx.globalCompositeOperation = "lighter";
+
+      // finished trails shimmer; brighter on the round's victory beat
+      const win = S.phase === "won" ? Math.min(1, (t - S.phaseT) / 400) : 0;
+      S.auroras.forEach((a, i) => {
+        if (a.done) {
+          const shimmer = reduceMotion ? 1 : .82 + .18 * Math.sin(t / 600 + i * 1.7);
+          strokeTrail(a.trail, a.colour.rgb, Math.min(1, shimmer + win * .3));
+        }
+      });
+      // fizzled trails fade out
+      S.fading = S.fading.filter((f) => {
+        const k = 1 - (t - f.t) / 650;
+        if (k <= 0) return false;
+        strokeTrail(f.trail, f.rgb, k * .6);
+        return true;
+      });
+
+      const a = S.auroras[S.active];
+      ctx.globalCompositeOperation = "source-over";
+      if (S.phase === "play") drawGuide(a, t);
+      ctx.globalCompositeOperation = "lighter";
+      if (a && a.trail.length) strokeTrail(a.trail, a.colour.rgb, 1);
+
+      // lights
+      S.auroras.forEach((au, i) => {
+        if (au.done) return;
+        const n = au.shape.closed ? au.lights.length - 1 : au.lights.length;
+        for (let k = 0; k < n; k++) {
+          let kind = "dim";
+          if (i === S.active && S.phase === "play") {
+            const litCount = au.lit;
+            if (k < litCount) kind = "lit";
+            else if (k === litCount || (litCount === 0 && k === 0)) kind = "target";
+            else kind = "wait";
+            // closing light: once every other light is lit, the first one becomes the target again
+            if (au.shape.closed && k === 0 && litCount === n) kind = "target";
+          }
+          drawLight(au.lights[k], au.colour.rgb, kind, t, au);
+        }
+      });
+
+      // sparks
+      S.sparks = S.sparks.filter((s) => {
+        s.x += s.vx; s.y += s.vy; s.vx *= .96; s.vy *= .96; s.life -= .022;
+        if (s.life <= 0) return false;
+        ctx.fillStyle = rgb(s.c, s.life);
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r * (0.5 + s.life), 0, 6.283); ctx.fill();
+        return true;
+      });
+      ctx.restore();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- Menu ----------
+  function showMenu() {
+    S.playing = false; S.drag = null;
+    bestEl.textContent = S.best ? `Best: round ${S.best}` : "";
+    playBtn.textContent = S.round > 1 ? `Continue · Round ${S.round}` : "Play";
+    menu.classList.remove("hide");
+    statusEl.innerHTML = ""; trackerEl.innerHTML = "";
+  }
+  function start() {
+    if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
+    if (audio && audio.state === "suspended") audio.resume();
+    menu.classList.add("hide");
+    S.playing = true;
+    buildRound();
+  }
+  playBtn.addEventListener("click", start);
+  backBtn.addEventListener("click", showMenu);
+  function syncSound() { soundBtn.textContent = S.sound ? "Sound on" : "Sound off"; soundBtn.setAttribute("aria-pressed", String(S.sound)); }
+  soundBtn.addEventListener("click", () => { S.sound = !S.sound; store.set("nl-sound", S.sound); syncSound(); });
+
+  // safe-area values for the canvas field math
+  const rootStyle = document.documentElement.style;
+  ["top", "bottom"].forEach((s) => rootStyle.setProperty("--sa-" + s, `env(safe-area-inset-${s}, 0px)`));
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;top:0;left:0;visibility:hidden;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)";
+  document.body.appendChild(probe);
+  function readSafe() {
+    const cs = getComputedStyle(probe);
+    rootStyle.setProperty("--sa-top", cs.paddingTop); rootStyle.setProperty("--sa-bottom", cs.paddingBottom);
+  }
+
+  function boot(data) {
+    if (data && data.round) S.round = data.round;
+    else S.round = Math.max(1, store.get("nl-round", 1));
+    readSafe(); resize(); syncSound(); showMenu();
+    requestAnimationFrame(frame);
+  }
+  window.addEventListener("resize", () => { readSafe(); resize(); });
+  window.claude?.hot?.snapshot?.(() => ({ round: S.round }));
+  window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+})();
+</script>
+</body>
+</html>
